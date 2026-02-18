@@ -1,7 +1,8 @@
-import React, { ReactNode, useRef, useState } from 'react';
+import React, { ReactNode, useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { useThree, useFrame, ThreeEvent } from '@react-three/fiber';
+import { useThree, ThreeEvent } from '@react-three/fiber';
 import { Image } from '@react-three/drei';
+import gsap from 'gsap';
 
 // Extend JSX.IntrinsicElements with R3F types to fix property existence errors
 declare global {
@@ -62,30 +63,25 @@ export const CarouselItemMesh = ({
   height,
   onClick 
 }: CarouselItemMeshProps) => {
+  const HOVER_RISE_Z = 1.26;
+  const HOVER_SCALE_BOOST = 0.06;
+  const HOVER_UP_DURATION = 0.24;
+  const HOVER_HOLD_DURATION = 0.12;
+  const HOVER_DOWN_DURATION = 0.66;
+
   // We use a separate ref for the visual part that moves
   const visualRef = useRef<THREE.Group>(null);
   // The parent group stays static for the hitbox
   const groupRef = useRef<THREE.Group>(null);
+  const hoverTimelineRef = useRef<gsap.core.Timeline | null>(null);
   
   const { camera, size } = useThree();
-  const [hovered, setHover] = useState(false);
 
-  useFrame((state, delta) => {
-    if (visualRef.current) {
-      // Hover Effect: 
-      // Lift the VISUAL mesh only. The Hitbox (parent group) stays put.
-      const targetZ = hovered ? 1.2 : 0; // Move forward in local Z space
-      const targetScale = hovered ? 1.05 : 1.0;
-      
-      // Smoothly interpolate Z position
-      visualRef.current.position.z = THREE.MathUtils.lerp(visualRef.current.position.z, targetZ, delta * 8);
-      
-      // Smoothly interpolate scale
-      const currentScale = visualRef.current.scale.x; 
-      const nextScale = THREE.MathUtils.lerp(currentScale, targetScale, delta * 8);
-      visualRef.current.scale.setScalar(nextScale);
-    }
-  });
+  useEffect(() => {
+    return () => {
+      hoverTimelineRef.current?.kill();
+    };
+  }, []);
 
   const handleClick = (e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -123,15 +119,69 @@ export const CarouselItemMesh = ({
     });
   };
 
-  const handlePointerOver = (e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation(); 
-    if (!groupRef.current) return;
-    setHover(true);
+  const handlePointerEnter = (_e: ThreeEvent<PointerEvent>) => {
+    if (!groupRef.current || !visualRef.current) return;
     document.body.style.cursor = 'pointer';
+
+    const targetScale = 1 + HOVER_SCALE_BOOST;
+    hoverTimelineRef.current?.kill();
+
+    const timeline = gsap.timeline({
+      defaults: {
+        overwrite: 'auto'
+      }
+    });
+    timeline.to(visualRef.current.position, {
+      z: HOVER_RISE_Z,
+      duration: HOVER_UP_DURATION,
+      ease: 'power3.out'
+    });
+    timeline.to(visualRef.current.position, {
+      z: HOVER_RISE_Z,
+      duration: HOVER_HOLD_DURATION
+    });
+    timeline.to(visualRef.current.position, {
+      z: 0,
+      duration: HOVER_DOWN_DURATION,
+      ease: 'power2.out'
+    });
+    timeline.to(
+      visualRef.current.scale,
+      {
+        x: targetScale,
+        y: targetScale,
+        z: targetScale,
+        duration: HOVER_UP_DURATION,
+        ease: 'power3.out'
+      },
+      0
+    );
+    timeline.to(
+      visualRef.current.scale,
+      {
+        x: targetScale,
+        y: targetScale,
+        z: targetScale,
+        duration: HOVER_HOLD_DURATION
+      },
+      HOVER_UP_DURATION
+    );
+    timeline.to(
+      visualRef.current.scale,
+      {
+        x: 1,
+        y: 1,
+        z: 1,
+        duration: HOVER_DOWN_DURATION,
+        ease: 'power2.out'
+      },
+      HOVER_UP_DURATION + HOVER_HOLD_DURATION
+    );
+
+    hoverTimelineRef.current = timeline;
   };
 
-  const handlePointerOut = (e: ThreeEvent<PointerEvent>) => {
-    setHover(false);
+  const handlePointerLeave = (_e: ThreeEvent<PointerEvent>) => {
     document.body.style.cursor = 'auto';
   };
 
@@ -140,46 +190,41 @@ export const CarouselItemMesh = ({
       ref={groupRef} 
       position={position} 
       rotation={rotation}
+      onClick={handleClick}
+      onPointerEnter={handlePointerEnter}
+      onPointerLeave={handlePointerLeave}
     >
       {/* 
         HITBOX: Invisible mesh that handles events. 
         It stays static so the mouse doesn't "fall off" during animation.
       */}
-      <mesh 
-        onClick={handleClick}
-        onPointerOver={handlePointerOver}
-        onPointerOut={handlePointerOut}
-      >
+      <mesh>
         <planeGeometry args={[width, height]} />
-        <meshBasicMaterial visible={false} side={THREE.DoubleSide} />
+        <meshBasicMaterial visible={false} side={THREE.DoubleSide} depthWrite={false} depthTest={false} />
       </mesh>
 
       {/* 
-        VISUALS: The actual image mesh + backing box that animates.
+        VISUALS: The actual image mesh that animates.
       */}
       <group ref={visualRef}>
-        
-        {/* Physical Backing for Depth */}
-        <mesh position={[0, 0, -0.05]}>
-           <boxGeometry args={[width, height, 0.1]} />
-           <meshStandardMaterial color="#2d2d2d" roughness={0.8} />
-        </mesh>
-
         {/* Image Texture */}
         <ImageErrorBoundary
           fallback={
             <mesh>
               <planeGeometry args={[width, height]} />
-              <meshStandardMaterial color="#334155" />
+              <meshStandardMaterial color="#334155" side={THREE.DoubleSide} />
             </mesh>
           }
         >
           <Image 
             url={url} 
-            transparent 
-            side={THREE.FrontSide}
+            transparent={false}
+            side={THREE.DoubleSide}
             scale={[width, height]} 
             toneMapped={false}
+            depthTest
+            depthWrite
+            renderOrder={2}
           />
         </ImageErrorBoundary>
       </group>

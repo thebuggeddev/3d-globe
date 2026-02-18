@@ -1,8 +1,8 @@
 import React, { useRef, useMemo } from 'react';
 import { PerspectiveCamera, Environment, OrbitControls } from '@react-three/drei';
-import { EffectComposer, Bloom, Noise, Vignette } from '@react-three/postprocessing';
+import { EffectComposer, Bloom, Vignette } from '@react-three/postprocessing';
 import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { CarouselItemMesh } from './CarouselItemMesh';
 import { CarouselItem } from '../types';
 
@@ -30,9 +30,48 @@ interface GlobeSceneProps {
 export const GlobeScene = ({ items, onItemClick }: GlobeSceneProps) => {
   const containerRef = useRef<THREE.Group>(null);
   const cameraRef = useRef<THREE.PerspectiveCamera>(null);
-  
-  // Radius of the image placement
-  const radius = 13.5;
+  const controlsRef = useRef<any>(null);
+  const { size } = useThree();
+  const orbitTarget = useMemo(() => new THREE.Vector3(0, 0, 0), []);
+
+  const cameraDistance = 44;
+  const cameraFov = useMemo(() => {
+    if (size.width < 640) return 44;
+    if (size.width < 1024) return 41;
+    return 38;
+  }, [size.width]);
+  const aspect = size.width / size.height;
+  const globeDownPx = 20;
+
+  // Keep image cards readable but contained on small viewports.
+  const itemScale = useMemo(
+    () => THREE.MathUtils.clamp(Math.min(size.width, size.height) / 920, 0.52, 1),
+    [size.width, size.height]
+  );
+  const worldUnitsPerPixel = useMemo(
+    () => (2 * Math.tan(THREE.MathUtils.degToRad(cameraFov / 2)) * cameraDistance) / size.height,
+    [cameraDistance, cameraFov, size.height]
+  );
+  const globeCenterY = useMemo(
+    () => -globeDownPx * worldUnitsPerPixel,
+    [globeDownPx, worldUnitsPerPixel]
+  );
+
+  // Derive a safe sphere radius from frustum bounds so cards never touch viewport edges.
+  const radius = useMemo(() => {
+    const baseRadius = 10.5;
+    const halfVerticalFrustum = Math.tan(THREE.MathUtils.degToRad(cameraFov / 2)) * cameraDistance * 0.9;
+    const halfHorizontalFrustum = halfVerticalFrustum * aspect;
+    const maxHalfCardSize = (2.25 * itemScale * 1.05) / 2;
+    const maxRadiusByHeight = halfVerticalFrustum - maxHalfCardSize - 0.8;
+    const maxRadiusByWidth = halfHorizontalFrustum - maxHalfCardSize - 0.8;
+
+    return THREE.MathUtils.clamp(
+      Math.min(baseRadius, maxRadiusByHeight, maxRadiusByWidth),
+      4.8,
+      baseRadius
+    );
+  }, [aspect, cameraDistance, cameraFov, itemScale]);
 
   // Calculate positions on a uniform Fibonacci Sphere
   const itemPositions = useMemo(() => {
@@ -58,25 +97,30 @@ export const GlobeScene = ({ items, onItemClick }: GlobeSceneProps) => {
         rot: dummy.rotation.clone()
       };
     });
-  }, [items]);
+  }, [items, radius]);
 
-  // Rig for subtle mouse parallax
-  useFrame((state) => {
+  // Keep camera locked around the globe center so the globe always stays centered.
+  useFrame(() => {
     if (cameraRef.current) {
-        // Subtle parallax based on mouse position
-        const mx = state.mouse.x * 2;
-        const my = state.mouse.y * 2;
-        
-        // Smoothly lerp camera position slight offset
-        cameraRef.current.position.x = THREE.MathUtils.lerp(cameraRef.current.position.x, mx, 0.05);
-        cameraRef.current.position.y = THREE.MathUtils.lerp(cameraRef.current.position.y, my, 0.05);
-        cameraRef.current.lookAt(0, 0, 0);
+      // Keep camera at a fixed distance around the orbit target so wheel/pinch can't move inside.
+      const offset = cameraRef.current.position.clone().sub(orbitTarget);
+      if (offset.lengthSq() === 0) {
+        offset.set(0, 0, 1);
+      }
+      offset.setLength(cameraDistance);
+      cameraRef.current.position.copy(orbitTarget).add(offset);
+      cameraRef.current.lookAt(orbitTarget);
     }
     
     // Constant slow rotation of the globe
     if (containerRef.current) {
         containerRef.current.rotation.y += 0.0008;
     }
+
+    if (controlsRef.current) {
+      controlsRef.current.target.copy(orbitTarget);
+    }
+    controlsRef.current?.update();
   });
 
   return (
@@ -84,16 +128,20 @@ export const GlobeScene = ({ items, onItemClick }: GlobeSceneProps) => {
       <PerspectiveCamera 
         ref={cameraRef}
         makeDefault 
-        position={[0, 0, 44]} 
-        fov={38} 
+        position={[0, 0, cameraDistance]} 
+        fov={cameraFov} 
       />
 
       <OrbitControls 
+        ref={controlsRef}
         enableZoom={false} 
         enablePan={false} 
         enableRotate={true}
+        enableDamping
         rotateSpeed={0.4}
         dampingFactor={0.05}
+        minDistance={cameraDistance}
+        maxDistance={cameraDistance}
         minPolarAngle={Math.PI / 3} // Restrict vertical angle
         maxPolarAngle={Math.PI / 1.5}
       />
@@ -116,47 +164,15 @@ export const GlobeScene = ({ items, onItemClick }: GlobeSceneProps) => {
       
       <Environment preset="apartment" environmentIntensity={0.6} />
 
-      {/* Background Environment Lines */}
-      <group>
-        {/* Large Outer Sphere Lines */}
-        <mesh rotation={[Math.PI / 8, Math.PI / 6, 0]}>
-          <sphereGeometry args={[50, 24, 24]} />
-          <meshBasicMaterial 
-            color="#3A2820" 
-            wireframe 
-            transparent 
-            opacity={0.03} 
-            side={THREE.BackSide}
-          />
-        </mesh>
-        
-        {/* Middle Sphere Lines */}
-        <mesh rotation={[-Math.PI / 8, 0, 0]}>
-           <sphereGeometry args={[35, 32, 32]} />
-           <meshBasicMaterial 
-             color="#5E3A28" 
-             wireframe 
-             transparent 
-             opacity={0.02} 
-           />
-        </mesh>
-      </group>
-
       {/* The Globe Container */}
-      <group ref={containerRef}>
-        {/* Inner Structure Sphere (The "core" of the globe) */}
-        <mesh>
-          <sphereGeometry args={[radius - 0.5, 32, 32]} />
-          <meshStandardMaterial color="#F5E6D8" transparent opacity={0.0} /> {/* Invisible core for occlusion if needed */}
-        </mesh>
-
+      <group ref={containerRef} position={[0, globeCenterY, 0]}>
         {itemPositions.map((item) => (
           <CarouselItemMesh
             key={item.id}
             url={item.url}
             title={item.title}
-            width={item.width}
-            height={item.height}
+            width={item.width * itemScale}
+            height={item.height * itemScale}
             position={[item.pos.x, item.pos.y, item.pos.z]}
             rotation={[item.rot.x, item.rot.y, item.rot.z]}
             onClick={(bounds) => onItemClick(item, bounds)}
@@ -172,7 +188,6 @@ export const GlobeScene = ({ items, onItemClick }: GlobeSceneProps) => {
             intensity={0.3} 
             radius={0.4}
         />
-        <Noise opacity={0.04} />
         <Vignette eskil={false} offset={0.1} darkness={0.5} />
       </EffectComposer>
     </>

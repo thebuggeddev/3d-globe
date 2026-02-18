@@ -7,9 +7,10 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
-      body { margin: 0; overflow: hidden; background-color: #F5E6D8; color: #3A2820; font-family: 'Manrope', sans-serif; }
+      body { margin: 0; overflow: hidden; background-color: #ECD4B6; color: #3A2820; font-family: 'Space Mono', monospace; }
+      .font-ui-mono { font-family: 'Space Mono', monospace; font-weight: 400; letter-spacing: 0.01em; }
       /* Custom scrollbar for overlay */
       ::-webkit-scrollbar { width: 6px; }
       ::-webkit-scrollbar-track { background: transparent; }
@@ -18,30 +19,67 @@
       .ticker-wrap {
         width: 100%;
         overflow: hidden;
-        background-color: #000;
-        padding-left: 100%; 
-        box-sizing: content-box;
+        display: flex;
+        align-items: center;
       }
       .ticker {
-        display: inline-block;
-        height: 32px;
-        line-height: 32px;
+        display: inline-flex;
+        align-items: center;
         white-space: nowrap;
-        padding-right: 100%;
-        box-sizing: content-box;
-        animation: ticker 30s linear infinite;
+        will-change: transform;
+        animation: ticker 24s linear infinite;
       }
       .ticker__item {
-        display: inline-block;
-        padding: 0 2rem;
-        font-size: 0.75rem;
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0 1.8rem;
+        font-size: 0.86rem;
+        font-family: 'Space Mono', monospace;
+        text-transform: uppercase;
         color: white;
-        font-weight: 600;
-        letter-spacing: 0.05em;
+        font-weight: 500;
+        letter-spacing: 0.02em;
+      }
+      .ticker__bolt {
+        color: #f3be3e;
+        font-size: 0.82rem;
       }
       @keyframes ticker {
         0% { transform: translate3d(0, 0, 0); }
-        100% { transform: translate3d(-100%, 0, 0); }
+        100% { transform: translate3d(-50%, 0, 0); }
+      }
+
+      .design-radial-lines {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: repeating-conic-gradient(
+          from 180deg at 50% 53%,
+          rgba(103, 72, 75, 0.16) 0deg,
+          rgba(103, 72, 75, 0.16) 0.2deg,
+          transparent 0.2deg,
+          transparent 7.6deg
+        );
+        opacity: 0.42;
+        -webkit-mask-image: radial-gradient(circle at 50% 53%, transparent 0 29%, rgba(0, 0, 0, 0.36) 48%, #000 76%);
+        mask-image: radial-gradient(circle at 50% 53%, transparent 0 29%, rgba(0, 0, 0, 0.36) 48%, #000 76%);
+      }
+      .design-radial-lines::after {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 53%;
+        height: 1px;
+        background: linear-gradient(to right, rgba(103, 72, 75, 0.18), rgba(103, 72, 75, 0.35), rgba(103, 72, 75, 0.18));
+      }
+
+      @media (max-width: 1024px) {
+        .ticker__item {
+          font-size: 0.74rem;
+          padding: 0 1.2rem;
+        }
       }
     </style>
   <script type="importmap">
@@ -57,13 +95,14 @@
     "@react-three/fiber": "https://esm.sh/@react-three/fiber@8.16.8?external=react,react-dom,three",
     "@react-three/drei": "https://esm.sh/@react-three/drei@9.108.0?external=react,react-dom,three,@react-three/fiber",
     "gsap": "https://esm.sh/gsap@3.12.5",
-    "@google/genai": "https://esm.sh/@google/genai@0.1.1",
-    "react/": "https://esm.sh/react@^19.2.4/"
+    "@google/genai": "https://esm.sh/@google/genai@0.2.0",
+    "react/": "https://esm.sh/react@18.3.1/"
   }
 }
 </script>
 </head>
   <body>
     <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
   </body>
 </html>
